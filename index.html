@@ -242,6 +242,45 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--felt);
   display:inline-block;margin-left:6px;opacity:0;vertical-align:middle}
 .wake-dot.active{opacity:1;animation:blink 3s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* メンバー登録チップ */
+.roster{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.rchip{background:rgba(0,0,0,.4);border:1px solid var(--gdim);border-radius:20px;
+  padding:7px 14px;font-size:.82rem;color:var(--cream);cursor:pointer;
+  font-family:'Noto Sans JP',sans-serif;-webkit-appearance:none;display:flex;align-items:center;gap:6px}
+.rchip:active{background:rgba(212,160,23,.2)}
+.rchip.used{opacity:.32;border-style:dashed}
+.rchip .rx{color:#ff6b6b;font-size:.9rem;font-weight:700}
+.sec-head{display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px}
+.btn-mini{background:none;border:1px solid var(--gdim);border-radius:8px;color:var(--dim);
+  font-size:.68rem;padding:4px 10px;font-family:'Noto Sans JP',sans-serif;cursor:pointer;-webkit-appearance:none}
+.btn-mini.on{color:#ff6b6b;border-color:rgba(192,57,43,.5)}
+.newgame-btn{width:100%;margin:18px 0 6px;padding:12px;background:none;
+  border:1px solid rgba(192,57,43,.35);border-radius:12px;color:#ff6b6b;
+  font-size:.8rem;font-family:'Noto Sans JP',sans-serif;cursor:pointer;-webkit-appearance:none}
+
+/* 調整画面 */
+.adj-note{padding:11px 13px;border-radius:10px;font-size:.76rem;line-height:1.6;
+  margin-bottom:10px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:var(--cream)}
+.adj-note b{color:var(--gold2)}
+.adj-bar{display:flex;gap:8px;margin-bottom:10px}
+.adj-bar button{flex:1;padding:9px;border-radius:10px;border:1px solid var(--gdim);
+  background:rgba(0,0,0,.4);color:var(--gold2);font-size:.78rem;
+  font-family:'Noto Sans JP',sans-serif;cursor:pointer;-webkit-appearance:none}
+.adj-item{display:flex;align-items:center;gap:9px;background:rgba(0,0,0,.3);
+  border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:9px 11px;margin-bottom:7px}
+.adj-item.target{border-color:var(--gdim);background:rgba(212,160,23,.07)}
+.adj-name{font-size:.86rem;color:var(--cream);width:74px;flex-shrink:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adj-raw{font-family:'Bebas Neue',sans-serif;font-size:.95rem;width:56px;text-align:right}
+.adj-input{width:62px;background:rgba(0,0,0,.5);border:1px solid var(--gdim);border-radius:8px;
+  color:var(--gold2);font-size:.9rem;padding:7px;text-align:center;outline:none;-webkit-appearance:none}
+.adj-arrow{color:var(--dim);font-size:.7rem}
+.adj-final{font-family:'Bebas Neue',sans-serif;font-size:1rem;flex:1;text-align:right}
+.rem-bar{padding:10px;border-radius:10px;text-align:center;font-size:.82rem;
+  font-weight:700;margin-bottom:10px}
+.rem-bar.ok{color:#2ecc71;background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.35)}
+.rem-bar.ng{color:#ffb648;background:rgba(212,160,23,.1);border:1px solid var(--gdim)}
 </style>
 </head>
 <body>
@@ -273,6 +312,12 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--felt);
     <button class="btn-add" onclick="addPlayer()">＋追加</button>
   </div>
 
+  <div class="sec-head">
+    <div class="sec-lbl" style="margin:0">MEMBERS（タップで参加）</div>
+    <button class="btn-mini" id="rosterEditBtn" onclick="toggleRosterEdit()">編集</button>
+  </div>
+  <div class="roster" id="rosterWrap"></div>
+
   <div class="sec-lbl">PLAYERS</div>
   <div class="players-wrap" id="playersList">
     <div class="no-items">プレイヤーを追加してください</div>
@@ -283,6 +328,11 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--felt);
   <div class="sec-lbl">HISTORY</div>
   <div class="log-wrap" id="logWrap">
     <div class="no-items">履歴はまだありません</div>
+  </div>
+
+  <button class="newgame-btn" onclick="newGame()">🆕 新しいゲームを始める（プレイヤー・履歴を消去）</button>
+  <div style="font-size:.62rem;color:var(--dim);text-align:center;padding-bottom:8px">
+    データは自動保存されます。アプリを閉じても復元します。
   </div>
 </div>
 
@@ -343,6 +393,80 @@ let counter = 0;
 let tapCounts = {};
 const PRESETS = [1, 5, 10, 20];
 
+// ── 登録メンバー ──
+const DEFAULT_ROSTER = ['木村','大森','有川','中薮','浅田','杉村','くわまえ'];
+const ROSTER_VER = 2;
+let roster = DEFAULT_ROSTER.slice();
+let rosterEdit = false;
+
+// ── 自動保存 ──
+const LSKEY = 'chipmgr_v2';
+function save() {
+  try {
+    localStorage.setItem(LSKEY, JSON.stringify({
+      players, bank, initBank, logs, roster, rosterVer: ROSTER_VER, ts: Date.now()
+    }));
+  } catch(e) {}
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(LSKEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    players  = Array.isArray(d.players) ? d.players : [];
+    bank     = typeof d.bank === 'number' ? d.bank : 1000;
+    initBank = typeof d.initBank === 'number' ? d.initBank : 1000;
+    logs     = Array.isArray(d.logs) ? d.logs : [];
+    roster   = (Array.isArray(d.roster) && d.roster.length) ? d.roster : DEFAULT_ROSTER.slice();
+    // 標準メンバーが増えた場合は不足分を追加（ユーザーが足した名前はそのまま残す）
+    if ((d.rosterVer || 1) < ROSTER_VER) {
+      DEFAULT_ROSTER.forEach(n => { if (!roster.includes(n)) roster.push(n); });
+    }
+    const ii = document.getElementById('initInput');
+    if (ii) ii.value = initBank;
+    return players.length > 0 || logs.length > 0;
+  } catch(e) { return false; }
+}
+
+function newGame() {
+  if (!confirm('プレイヤーと履歴をすべて消去して新しいゲームを始めますか？\n（登録メンバーは残ります）')) return;
+  players = [];
+  logs = [];
+  bank = initBank;
+  renderAll();
+  toast('新しいゲームを開始しました', 'ok');
+}
+
+// ── ロースター操作 ──
+function toggleRosterEdit() {
+  rosterEdit = !rosterEdit;
+  const b = document.getElementById('rosterEditBtn');
+  b.textContent = rosterEdit ? '完了' : '編集';
+  b.className = 'btn-mini' + (rosterEdit ? ' on' : '');
+  renderRoster();
+}
+function rosterTap(name) {
+  if (rosterEdit) {
+    if (!confirm(`「${name}」を登録メンバーから削除しますか？`)) return;
+    roster = roster.filter(n => n !== name);
+    renderRoster(); save();
+    return;
+  }
+  if (players.find(p => p.name === name)) { toast('すでに参加しています', 'err'); return; }
+  addPlayer(name);
+}
+function registerName(name) {
+  if (name && !roster.includes(name)) roster.push(name);
+}
+function renderRoster() {
+  const w = document.getElementById('rosterWrap');
+  if (!roster.length) { w.innerHTML = '<div class="no-items" style="padding:10px">登録メンバーがいません</div>'; return; }
+  w.innerHTML = roster.map(n => {
+    const used = !!players.find(p => p.name === n);
+    return `<button class="rchip${used && !rosterEdit ? ' used' : ''}" onclick="rosterTap('${n.replace(/'/g,"\\'")}')">${esc(n)}${rosterEdit ? '<span class="rx">✕</span>' : ''}</button>`;
+  }).join('');
+}
+
 // ── WAKE LOCK ──
 let wakeLock = null;
 async function requestWakeLock() {
@@ -378,19 +502,37 @@ function addPlayer(name) {
   if (!name) return;
   if (players.find(p => p.name === name)) { toast('同名のプレイヤーがいます', 'err'); return; }
   players.push({ id: Date.now(), name, payout: 0, returned: 0, back: 0 });
+  registerName(name);
   document.getElementById('nameInput').value = '';
   renderAll();
+  toast(`${name} が参加しました`, 'ok');
 }
 
 function removePlayer(id) {
   const p = players.find(p => p.id === id);
   if (!p) return;
-  const net = bankBalance(p);
-  if (net !== 0 && !confirm(`${p.name}の残高が${net}枚残っています。削除しますか？`)) return;
-  if (net < 0) bank += Math.abs(net);
-  if (net > 0) bank -= net;
+  const net = bankBalance(p); // 正=バンクへの負債 / 負=バンクへの債権
+
+  let held = 0;
+  if (net !== 0 || p.payout > 0) {
+    const ans = prompt(
+      `${p.name} を削除します。\n\n` +
+      `いま手元にあるチップは何枚ですか？\n` +
+      `（その枚数をバンクに戻して退席させます）`, '0');
+    if (ans === null) return;
+    held = parseInt(ans, 10);
+    if (isNaN(held) || held < 0) { toast('枚数が正しくありません', 'err'); return; }
+  }
+
+  // 退席時点の収支
+  const win = held - p.payout + p.returned + p.back;
+  // 手元のチップをバンクへ戻す → 総数の整合が保たれる
+  bank += held;
+
+  addLog(`✕ ${p.name} 退席（${held}枚返却 / 収支 ${win >= 0 ? '＋' : '－'}${Math.abs(win)}枚）`, 'return');
   players = players.filter(q => q.id !== id);
   renderAll();
+  toast(`${p.name} 退席：収支 ${win >= 0 ? '＋' : '－'}${Math.abs(win)}枚`, win >= 0 ? 'ok' : 'info');
 }
 
 // リアルタイム表示用：バンクへの純負債
@@ -499,8 +641,13 @@ function execAction() {
 }
 
 // ── 精算フロー ──
+let settleActuals = {};
+let settleAdj = {};
+let settleLogged = false;
+
 function openSettle() {
   if (players.length === 0) { toast('プレイヤーがいません', 'err'); return; }
+  settleActuals = {}; settleAdj = {}; settleLogged = false;
   renderSettleInput();
   document.getElementById('settleOverlay').classList.add('open');
 }
@@ -510,6 +657,7 @@ function closeSettle() {
 }
 
 function renderSettleInput() {
+  settleLogged = false;
   document.getElementById('smodalTitle').textContent = '📋 手持ちチップを入力';
   document.getElementById('smodalStep').textContent = '実際の手持ち枚数を入力してください';
 
@@ -519,6 +667,7 @@ function renderSettleInput() {
         const bb = bankBalance(p);
         const bbLabel = bb > 0 ? `負債 ${bb}枚` : bb < 0 ? `債権 ${Math.abs(bb)}枚` : '精算済';
         const bbColor = bb > 0 ? '#ff8888' : bb < 0 ? '#7ec8f0' : 'var(--dim)';
+        const pre = settleActuals[p.id] !== undefined ? settleActuals[p.id] : '';
         return `
         <div class="actual-item">
           <div class="actual-name">${esc(p.name)}</div>
@@ -527,12 +676,13 @@ function renderSettleInput() {
             <div class="actual-ledger-lbl">バンク残高</div>
           </div>
           <input class="actual-input" id="actual-${p.id}" type="number" min="0"
-            placeholder="0" inputmode="numeric">
+            value="${pre}" placeholder="0" inputmode="numeric">
         </div>`;
       }).join('')}
     </div>
     <div style="margin-top:12px;font-size:.7rem;color:var(--dim);text-align:center;">
-      ※手持ちを入力後「計算する」を押してください
+      ※空欄は「0枚」として計算します<br>
+      ※入力後「計算する」を押してください
     </div>`;
 
   document.getElementById('smodalFooter').innerHTML = `
@@ -541,85 +691,338 @@ function renderSettleInput() {
 }
 
 function calcSettle() {
-  // 手持ち枚数を取得
-  const actuals = {};
-  let allFilled = true;
+  settleActuals = {};
+  let blankCount = 0;
   players.forEach(p => {
     const el = document.getElementById('actual-' + p.id);
-    if (!el || el.value === '') { allFilled = false; return; }
-    actuals[p.id] = parseInt(el.value) || 0;
+    if (!el) { settleActuals[p.id] = 0; return; }
+    if (el.value.trim() === '') { blankCount++; settleActuals[p.id] = 0; return; }
+    const n = parseInt(el.value, 10);
+    settleActuals[p.id] = (isNaN(n) || n < 0) ? 0 : n;
   });
-  if (!allFilled) { toast('全員の手持ちを入力してください', 'err'); return; }
+  if (blankCount > 0) toast(`空欄${blankCount}人を0枚として計算しました`, 'info');
 
-  // 勝敗計算：手持ち - 払出し + 返却 + 戻し
+  const st = computeSettle();
+  if (st.rawSum !== 0) renderAdjust();
+  else renderReport();
+}
+
+// 勝敗計算：手持ち − 払出し ＋ 返却 ＋ 戻し（＋調整）
+function computeSettle() {
   const results = players.map(p => {
-    const held = actuals[p.id];
-    const win = held - p.payout + p.returned + p.back;
-    return { name: p.name, win, held };
+    const held = settleActuals[p.id] || 0;
+    const adj  = settleAdj[p.id] || 0;
+    const raw  = held - p.payout + p.returned + p.back;
+    return { id: p.id, name: p.name, held, raw, adj, win: raw + adj };
   }).sort((a, b) => b.win - a.win);
 
-  // 総数チェック：全員手持ち合計 + バンク残 = 初期枚数
+  const rawSum   = results.reduce((s, r) => s + r.raw, 0);
+  const adjSum   = results.reduce((s, r) => s + r.adj, 0);
   const totalHeld = results.reduce((s, r) => s + r.held, 0);
-  const totalCheck = totalHeld + bank;
-  const isOk = totalCheck === initBank;
+  return { results, rawSum, adjSum, remain: rawSum + adjSum, totalHeld };
+}
 
-  // テキスト生成
+// ── 調整画面 ──
+function renderAdjust() {
+  const st = computeSettle();
+  const short = st.rawSum > 0;   // true=払う分が不足 / false=余る
+
+  document.getElementById('smodalTitle').textContent = '🔧 チップ調整';
+  document.getElementById('smodalStep').textContent =
+    short ? `${Math.abs(st.rawSum)}枚 不足しています` : `${Math.abs(st.rawSum)}枚 余っています`;
+
+  const note = short
+    ? `負けた人が払う額より、勝った人が受け取る額が <b>${Math.abs(st.rawSum)}枚</b> 多くなっています。<br>勝っているプレイヤーから <b>差し引いて</b>ください。`
+    : `負けた人が払う額のほうが <b>${Math.abs(st.rawSum)}枚</b> 多く、チップが余ります。<br>勝っているプレイヤーに <b>加算して</b>ください。`;
+
+  const rows = st.results.map(r => {
+    const isTarget = r.raw > 0;   // 調整は常に勝っている人で吸収する
+    const rawTxt = (r.raw >= 0 ? '＋' : '－') + Math.abs(r.raw);
+    const rawCol = r.raw > 0 ? '#2ecc71' : r.raw < 0 ? '#ff8888' : 'var(--dim)';
+    const finCol = r.win > 0 ? '#2ecc71' : r.win < 0 ? '#ff8888' : 'var(--dim)';
+    const val = r.adj ? Math.abs(r.adj) : '';
+    return `
+      <div class="adj-item${isTarget ? ' target' : ''}">
+        <div class="adj-name">${esc(r.name)}</div>
+        <div class="adj-raw" style="color:${rawCol}">${rawTxt}</div>
+        <div class="adj-arrow">${short ? '−' : '+'}</div>
+        <input class="adj-input" type="number" min="0" inputmode="numeric"
+          value="${val}" placeholder="0" oninput="setAdj(${r.id}, this.value)">
+        <div class="adj-arrow">=</div>
+        <div class="adj-final" id="fin-${r.id}" style="color:${finCol}">${(r.win >= 0 ? '＋' : '－') + Math.abs(r.win)}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('smodalBody').innerHTML = `
+    <div class="adj-note">${note}</div>
+    <div id="remBar" class="rem-bar ${st.remain === 0 ? 'ok' : 'ng'}">${remText(st.remain)}</div>
+    <div class="adj-bar">
+      <button onclick="autoAdjust()">⚡ 自動割振</button>
+      <button onclick="clearAdjust()">クリア</button>
+    </div>
+    ${rows}
+    <div style="margin-top:10px;font-size:.66rem;color:var(--dim);line-height:1.6">
+      ※金色の行＝勝っているプレイヤー。調整はここで吸収します<br>
+      ※必要なら負けた人の欄にも入力できます<br>
+      ※調整内容は履歴とLINEテキストに残ります
+    </div>`;
+
+  document.getElementById('smodalFooter').innerHTML = `
+    <button class="smodal-btn btn-back-step" onclick="renderSettleInput()">← 戻る</button>
+    <button class="smodal-btn btn-next" onclick="renderReport()">レポート →</button>`;
+}
+
+function remText(remain) {
+  if (remain === 0) return '✅ 収支ぴったり（残り0枚）';
+  return remain > 0 ? `⚠️ あと ${remain}枚 不足` : `⚠️ あと ${Math.abs(remain)}枚 余り`;
+}
+
+function setAdj(id, v) {
+  const st0 = computeSettle();
+  const dir = st0.rawSum > 0 ? -1 : 1;
+  const n = parseInt(v, 10);
+  if (!v || isNaN(n) || n <= 0) delete settleAdj[id];
+  else settleAdj[id] = dir * n;
+
+  const st = computeSettle();
+  const bar = document.getElementById('remBar');
+  if (bar) { bar.textContent = remText(st.remain); bar.className = 'rem-bar ' + (st.remain === 0 ? 'ok' : 'ng'); }
+  st.results.forEach(r => {
+    const el = document.getElementById('fin-' + r.id);
+    if (el) {
+      el.textContent = (r.win >= 0 ? '＋' : '－') + Math.abs(r.win);
+      el.style.color = r.win > 0 ? '#2ecc71' : r.win < 0 ? '#ff8888' : 'var(--dim)';
+    }
+  });
+}
+
+function clearAdjust() { settleAdj = {}; renderAdjust(); }
+
+function autoAdjust() {
+  const st = computeSettle();
+  const base = Math.abs(st.rawSum);
+  if (base === 0) { toast('調整は不要です', 'ok'); return; }
+  const dir = st.rawSum > 0 ? -1 : 1;
+  // 調整は常に勝っているプレイヤーで吸収する
+  let targets = st.results.filter(r => r.raw > 0)
+                          .sort((a, b) => Math.abs(b.raw) - Math.abs(a.raw));
+  if (!targets.length) {
+    // 勝者が1人もいない場合のみ全員で按分
+    targets = st.results.filter(r => r.raw !== 0)
+                        .sort((a, b) => Math.abs(b.raw) - Math.abs(a.raw));
+  }
+  if (!targets.length) { toast('対象プレイヤーがいません', 'err'); return; }
+
+  const totalW = targets.reduce((s, r) => s + Math.abs(r.raw), 0);
+  settleAdj = {};
+  let assigned = 0;
+  targets.forEach(r => {
+    const amt = Math.floor(base * Math.abs(r.raw) / totalW);
+    settleAdj[r.id] = dir * amt;
+    assigned += amt;
+  });
+  let left = base - assigned, k = 0;
+  while (left > 0) { settleAdj[targets[k % targets.length].id] += dir; left--; k++; }
+  renderAdjust();
+  toast('勝敗の比率で自動割振しました', 'ok');
+}
+
+// ── レポート ──
+function padName(name, width) {
+  let s = name;
+  while (s.length < width) s += '　';
+  return s;
+}
+function padNum(n, width) {
+  let s = String(n);
+  while (s.length < width) s = ' ' + s;
+  return s;
+}
+
+function renderReport() {
+  const st = computeSettle();
+  const results = st.results;
+  const isOk = st.remain === 0;
+  const totalCheck = st.totalHeld + bank;
+
+  const nameW = Math.max.apply(null, results.map(r => r.name.length));
+  const numW  = Math.max.apply(null, results.map(r => String(Math.abs(r.win)).length));
+
   const now = new Date();
   const dateStr = `${now.getFullYear()}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
 
   const instructions = calcMinSettlement(results);
+  const adjusted = results.filter(r => r.adj !== 0);
 
   let lines = [];
   lines.push('🃏 CHIP MGR -TMB-');
   lines.push('──────────────────');
   results.forEach(r => {
     const sign = r.win >= 0 ? '＋' : '－';
-    const abs = Math.abs(r.win);
     const trophy = r.win > 0 ? ' 🏆' : r.win === 0 ? ' 🟰' : '';
-    lines.push(`${r.name}　${sign}${abs}枚${trophy}`);
+    lines.push(`${padName(r.name, nameW)}　${sign}${padNum(Math.abs(r.win), numW)}枚${trophy}`);
   });
+
+  if (adjusted.length > 0) {
+    const short = st.rawSum > 0;
+    lines.push('──────────────────');
+    lines.push(short ? `🔧 チップ調整（不足${Math.abs(st.rawSum)}枚を差引）`
+                     : `🔧 チップ調整（余剰${Math.abs(st.rawSum)}枚を加算）`);
+    adjusted.forEach(r => {
+      const s = r.adj < 0 ? '−' : '+';
+      lines.push(`${padName(r.name, nameW)}　${s}${padNum(Math.abs(r.adj), numW)}枚　(元${r.raw >= 0 ? '＋' : '－'}${Math.abs(r.raw)})`);
+    });
+  }
+
   lines.push('──────────────────');
-  lines.push(`チップ総数　${isOk ? '±0 ✅' : `差異${totalCheck - initBank > 0 ? '+' : ''}${totalCheck - initBank}枚 ⚠️`}`);
+  lines.push(`チップ総数　${isOk ? '±0 ✅' : `差異${st.remain > 0 ? '+' : ''}${st.remain}枚 ⚠️`}`);
+
   if (instructions.length > 0) {
     lines.push('');
     lines.push(`💸 精算指示（${instructions.length}回）`);
+    let prev = null;
     instructions.forEach(ins => {
-      lines.push(`${ins.from} → ${ins.to}　${ins.amt}枚`);
+      const head = (ins.from === prev) ? '　'.repeat(ins.from.length) + '　' : ins.from + ' ';
+      lines.push(`${head}→ ${ins.to}　${ins.amt}枚`);
+      prev = ins.from;
     });
   }
   lines.push('──────────────────');
   lines.push(dateStr);
 
   const txt = lines.join('\n');
+
   const checkMsg = isOk
     ? `✅ チップ総数一致（${initBank}枚）`
-    : `⚠️ 差異あり：手持合計${totalHeld}枚 + バンク${bank}枚 = ${totalCheck}枚（初期${initBank}枚）`;
+    : `⚠️ 差異あり：手持合計${st.totalHeld}枚 + バンク${bank}枚 = ${totalCheck}枚（初期${initBank}枚）`;
+
+  // 履歴に記録（1回の精算につき1度だけ）
+  if (!settleLogged) {
+    adjusted.forEach(r => {
+      addLog(`🔧 ${r.name} 調整 ${r.adj < 0 ? '−' : '+'}${Math.abs(r.adj)}枚`, 'back');
+    });
+    addLog(`📋 精算 ${isOk ? '(±0)' : `(差異${st.remain}枚)`}`, 'payout');
+    settleLogged = true;
+    renderAll();
+  }
 
   document.getElementById('smodalTitle').textContent = '📋 精算レポート';
   document.getElementById('smodalStep').textContent = isOk ? '✅ 収支一致' : '⚠️ 収支に差異あり';
   document.getElementById('smodalBody').innerHTML = `
     <div class="check-bar ${isOk ? 'ok' : 'ng'}">${checkMsg}</div>
-    <textarea class="settle-textarea" id="settleText" readonly>${txt}</textarea>`;
+    <textarea class="settle-textarea" id="settleText" readonly>${esc(txt)}</textarea>`;
   document.getElementById('smodalFooter').innerHTML = `
-    <button class="smodal-btn btn-back-step" onclick="renderSettleInput()">← 戻る</button>
+    <button class="smodal-btn btn-back-step" onclick="${st.rawSum !== 0 ? 'renderAdjust()' : 'renderSettleInput()'}">← 戻る</button>
     <button class="smodal-btn btn-copy" onclick="copySettle()">📋 コピー</button>`;
 }
 
-// 最小回数精算（貪欲法）
+// ── 精算指示の計算 ──
+// 方針: ①1人が配る相手は最大2人まで ②その中で回数が最小 ③不可能な場合のみ3人以上
 function calcMinSettlement(results) {
-  let bal = results.map(r => ({ name: r.name, amt: r.win }));
-  const instructions = [];
-  for (let i = 0; i < 200; i++) {
-    bal.sort((a, b) => a.amt - b.amt);
-    const debtor   = bal[0];
-    const creditor = bal[bal.length - 1];
-    if (Math.abs(debtor.amt) < 1 || creditor.amt < 1) break;
-    const amt = Math.min(Math.abs(debtor.amt), creditor.amt);
-    instructions.push({ from: debtor.name, to: creditor.name, amt });
-    debtor.amt   += amt;
-    creditor.amt -= amt;
+  const base = results.filter(r => r.win !== 0).map(r => ({ name: r.name, amt: r.win }));
+  if (!base.length) return [];
+  const capped = solveCap2(base, 80000);
+  const ins = capped ? capped : solveFallback(base);
+  return groupByPayer(ins);
+}
+
+// 「配る相手は2人まで」を制約に、回数最小の組み合わせを探索
+function solveCap2(base, budget) {
+  const debtors = base.filter(x => x.amt < 0)
+                      .map(x => ({ name: x.name, d: -x.amt }))
+                      .sort((a, b) => b.d - a.d);
+  const creds = base.filter(x => x.amt > 0).map(x => ({ name: x.name, c: x.amt }));
+  if (!debtors.length || !creds.length) return [];
+  let nodes = 0, best = null;
+
+  function rec(i, rem, acc) {
+    if (nodes++ > budget) return;
+    if (best && acc.length >= best.length) return;
+    if (i === debtors.length) {
+      if (rem.every(v => v === 0) && (!best || acc.length < best.length)) best = acc.slice();
+      return;
+    }
+    const d = debtors[i].d, name = debtors[i].name;
+    const idx = [];
+    for (let j = 0; j < rem.length; j++) if (rem[j] > 0) idx.push(j);
+
+    // 1人にまとめて払う
+    for (const j of idx) {
+      if (rem[j] >= d) {
+        const r = rem.slice(); r[j] -= d;
+        acc.push({ from: name, to: creds[j].name, amt: d });
+        rec(i + 1, r, acc); acc.pop();
+      }
+    }
+    // 2人に分けて払う（1人目を使い切り、残りを2人目へ）
+    for (const j of idx) {
+      if (rem[j] >= d) continue;
+      for (const k of idx) {
+        if (k === j) continue;
+        const rest = d - rem[j];
+        if (rem[k] >= rest) {
+          const r = rem.slice(); const first = r[j]; r[j] = 0; r[k] -= rest;
+          acc.push({ from: name, to: creds[j].name, amt: first });
+          acc.push({ from: name, to: creds[k].name, amt: rest });
+          rec(i + 1, r, acc); acc.pop(); acc.pop();
+        }
+      }
+    }
   }
-  return instructions;
+  rec(0, creds.map(x => x.c), []);
+  return best;
+}
+
+// 2人以内が不可能な場合：配る人数がなるべく少なくなる解を選ぶ
+function solveFallback(base) {
+  let best = null, bs = null;
+  for (let t = 0; t < 120; t++) {
+    const ins = runGreedy(base, t);
+    const s = statOf(ins);
+    if (!bs || s.maxOut < bs.maxOut ||
+       (s.maxOut === bs.maxOut && s.n < bs.n)) { best = ins; bs = s; }
+  }
+  return best;
+}
+
+function runGreedy(base, seed) {
+  let s = seed * 1103515245 + 12345;
+  const rand = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  let bal = base.map(r => ({ name: r.name, amt: r.amt }));
+  const ins = [];
+  for (let i = 0; i < 300; i++) {
+    const ds = bal.filter(x => x.amt < 0).sort((a, b) => a.amt - b.amt);
+    const cs = bal.filter(x => x.amt > 0).sort((a, b) => b.amt - a.amt);
+    if (!ds.length || !cs.length) break;
+    const d = (seed === 0) ? ds[0] : ds[Math.floor(rand() * Math.min(ds.length, 2))];
+    const debt = -d.amt;
+    const fit = cs.filter(x => x.amt >= debt).sort((a, b) => a.amt - b.amt);
+    let c;
+    if (seed === 0) c = cs[0];
+    else if (fit.length && rand() < 0.75) c = fit[0];
+    else c = cs[Math.floor(rand() * Math.min(cs.length, 2))];
+    const amt = Math.min(debt, c.amt);
+    ins.push({ from: d.name, to: c.name, amt });
+    d.amt += amt; c.amt -= amt;
+  }
+  return ins;
+}
+
+function statOf(ins) {
+  const out = {};
+  ins.forEach(i => { out[i.from] = (out[i.from] || 0) + 1; });
+  const vals = Object.keys(out).map(k => out[k]);
+  return { n: ins.length, maxOut: vals.length ? Math.max.apply(null, vals) : 0 };
+}
+
+// 同じ人の支払いをまとめ、支払総額の大きい順に並べる
+function groupByPayer(ins) {
+  const order = {}, total = {};
+  ins.forEach(i => { total[i.from] = (total[i.from] || 0) + i.amt; });
+  const payers = Object.keys(total).sort((a, b) => total[b] - total[a]);
+  payers.forEach((p, i) => order[p] = i);
+  return ins.slice().sort((a, b) =>
+    order[a.from] !== order[b.from] ? order[a.from] - order[b.from] : b.amt - a.amt);
 }
 
 function copySettle() {
@@ -636,6 +1039,7 @@ function copySettle() {
 // ── RENDER ──
 function renderAll() {
   document.getElementById('bankNum').textContent = bank;
+  renderRoster();
   const el = document.getElementById('playersList');
   if (!players.length) {
     el.innerHTML = '<div class="no-items">プレイヤーを追加してください</div>';
@@ -684,6 +1088,8 @@ function renderAll() {
       `<div class="log-item"><span class="log-${l.t}">${esc(l.txt)}</span><span class="log-time">${l.time}</span></div>`
     ).join('');
   }
+
+  save();
 }
 
 function addLog(txt, t) {
@@ -702,9 +1108,14 @@ function toast(msg, type) {
   tt = setTimeout(() => el.classList.remove('show'), 2800);
 }
 
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// ── 起動 ──
+const restored = load();
 renderAll();
+if (restored) {
+  setTimeout(() => toast('前回のデータを復元しました', 'info'), 400);
+}
 </script>
 </body>
 </html>
