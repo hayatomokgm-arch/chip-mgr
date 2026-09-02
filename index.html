@@ -733,10 +733,10 @@ function renderAdjust() {
 
   const note = short
     ? `負けた人が払う額より、勝った人が受け取る額が <b>${Math.abs(st.rawSum)}枚</b> 多くなっています。<br>勝っているプレイヤーから <b>差し引いて</b>ください。`
-    : `負けた人が払う額のほうが <b>${Math.abs(st.rawSum)}枚</b> 多く、チップが余ります。<br>勝っているプレイヤーに <b>加算して</b>ください。`;
+    : `負けた人が払う額のほうが <b>${Math.abs(st.rawSum)}枚</b> 多く、チップが余ります。<br>負けているプレイヤーに <b>返して</b>ください（負け額が軽くなります）。`;
 
   const rows = st.results.map(r => {
-    const isTarget = r.raw > 0;   // 調整は常に勝っている人で吸収する
+    const isTarget = short ? r.raw > 0 : r.raw < 0;   // 不足=勝者から引く / 余り=敗者に返す
     const rawTxt = (r.raw >= 0 ? '＋' : '－') + Math.abs(r.raw);
     const rawCol = r.raw > 0 ? '#2ecc71' : r.raw < 0 ? '#ff8888' : 'var(--dim)';
     const finCol = r.win > 0 ? '#2ecc71' : r.win < 0 ? '#ff8888' : 'var(--dim)';
@@ -762,8 +762,8 @@ function renderAdjust() {
     </div>
     ${rows}
     <div style="margin-top:10px;font-size:.66rem;color:var(--dim);line-height:1.6">
-      ※金色の行＝勝っているプレイヤー。調整はここで吸収します<br>
-      ※必要なら負けた人の欄にも入力できます<br>
+      ※金色の行が調整の対象です（${short ? '勝っている人から差し引き' : '負けている人に返却'}）<br>
+      ※必要なら他の人の欄にも入力できます<br>
       ※調整内容は履歴とLINEテキストに残ります
     </div>`;
 
@@ -804,10 +804,10 @@ function autoAdjust() {
   if (base === 0) { toast('調整は不要です', 'ok'); return; }
   const dir = st.rawSum > 0 ? -1 : 1;
   // 調整は常に勝っているプレイヤーで吸収する
-  let targets = st.results.filter(r => r.raw > 0)
+  // 不足＝勝っている人から差し引く / 余り＝負けている人に返す
+  let targets = st.results.filter(r => st.rawSum > 0 ? r.raw > 0 : r.raw < 0)
                           .sort((a, b) => Math.abs(b.raw) - Math.abs(a.raw));
   if (!targets.length) {
-    // 勝者が1人もいない場合のみ全員で按分
     targets = st.results.filter(r => r.raw !== 0)
                         .sort((a, b) => Math.abs(b.raw) - Math.abs(a.raw));
   }
@@ -867,7 +867,7 @@ function renderReport() {
     const short = st.rawSum > 0;
     lines.push('──────────────────');
     lines.push(short ? `🔧 チップ調整（不足${Math.abs(st.rawSum)}枚を差引）`
-                     : `🔧 チップ調整（余剰${Math.abs(st.rawSum)}枚を加算）`);
+                     : `🔧 チップ調整（余剰${Math.abs(st.rawSum)}枚を返却）`);
     adjusted.forEach(r => {
       const s = r.adj < 0 ? '−' : '+';
       lines.push(`${padName(r.name, nameW)}　${s}${padNum(Math.abs(r.adj), numW)}枚　(元${r.raw >= 0 ? '＋' : '－'}${Math.abs(r.raw)})`);
